@@ -3,8 +3,6 @@
  * A RGB LED lamp
  * 
  * TODO:
- * - git
- * - Clean up IR control
  * - TinyReciever.h?, IRCommandDispatcher.h?, other cleaner uproach?
  * - Implement EEPROM saving and loading
  * - Functions from FastLED
@@ -16,7 +14,7 @@
 //#include <EEPROM.h>
 
 #include <FastLED.h>
-#include <IRremote.h>
+#include <IRremote.hpp>
 
 // --- Pin Config ---
                       // strip - Color - Uno
@@ -36,8 +34,10 @@
   #define BAUDRATE  115200  // Baudrate for Hardware Serial
   #define NUM_LEDS  14      // Number of LEDs in the strip
   #define IR_CODE_FORGET_TIME_ms 1000L
+  #define IR_REPEAT_IGNORE_TIME_ms 100
   #define MINIMUM_FADE_TIME_ms 50
-  #define STATUS_FADE_TIME_ms 150  
+  #define STATUS_FADE_TIME_ms 150 
+  #define IR_REMOTE_STEP 2
 // ---
 
 // --- Define variables, classes and functions ---
@@ -83,6 +83,9 @@ enum HSVItem{
   VAL
 };
 
+enum IRFunctionItem{
+};
+
 struct lightData {
   byte Brightness;
   CHSV Main1;
@@ -96,6 +99,14 @@ struct fadeData {
   byte diff;
   int dir;
 };
+struct IRAction {
+  byte mode; // Mode number (0-2)
+  byte IrCommand; // IR command (0-23)
+  void (*action)(); // Action function callback
+  bool repeatable = true; // If the action can be repeated
+  IRAction(byte m, byte cmd, void (*act)(), bool rep = true)
+    : mode(m), IrCommand(cmd), action(act), repeatable(rep) {}
+};
 
 // classes
 CRGB leds[NUM_LEDS];
@@ -104,6 +115,8 @@ CRGB leds[NUM_LEDS];
 bool On = true;
 byte mode = 0;
 mainLayout Layout = DIAGONAL;
+
+unsigned long LastIRCodeTime = 0;
 
 unsigned long FadeStartTime = 0;
 long FadeTime = 0;
@@ -149,10 +162,89 @@ void statusUpdate(bool skipFade = false);
 // Callback for every received IR signal. Handles the IR signals.
 void recieveCallbackHandler();
 
+// IR signal action callbacks
+void onOffAction() {On=!On;}
+void modeAction() {mode = (mode + 1) % 3;}
+void brightnessUpAction() {if (CurrentLight.Brightness < 255) {CurrentLight.Brightness+=IR_REMOTE_STEP;}}
+void brightnessDownAction() {if (CurrentLight.Brightness > 0) {CurrentLight.Brightness-=IR_REMOTE_STEP;}}
+void usePreset0Action() {fade(500, Preset0);}
+void usePreset1Action() {fade(500, Preset1);};
+void usePreset2Action() {fade(500, Preset2);};
+void usePreset3Action() {fade(500, Preset3);};
+void usePreset4Action() {fade(500, Preset4);};
+void usePreset5Action() {fade(500, Preset5);};
+void main1HueUpAction() {CurrentLight.Main1.h+=IR_REMOTE_STEP;}
+void main1HueDownAction() {CurrentLight.Main1.h-=IR_REMOTE_STEP;}
+void main1SatUpAction() {if (CurrentLight.Main1.s < 255) {CurrentLight.Main1.s+=IR_REMOTE_STEP;}}
+void main1SatDownAction() {if (CurrentLight.Main1.s > 0) {CurrentLight.Main1.s-=IR_REMOTE_STEP;}}
+void main1ValUpAction() {if (CurrentLight.Main1.v < 255) {CurrentLight.Main1.v+=IR_REMOTE_STEP;}}
+void main1ValDownAction() {if (CurrentLight.Main1.v > 0) {CurrentLight.Main1.v-=IR_REMOTE_STEP;}}
+void main2HueUpAction() {CurrentLight.Main2.h+=IR_REMOTE_STEP;}
+void main2HueDownAction() {CurrentLight.Main2.h-=IR_REMOTE_STEP;}
+void main2SatUpAction() {if (CurrentLight.Main2.s < 255) {CurrentLight.Main2.s+=IR_REMOTE_STEP;}}
+void main2SatDownAction() {if (CurrentLight.Main2.s > 0) {CurrentLight.Main2.s-=IR_REMOTE_STEP;}}
+void main2ValUpAction() {if (CurrentLight.Main2.v < 255) {CurrentLight.Main2.v+=IR_REMOTE_STEP;}}
+void main2ValDownAction() {if (CurrentLight.Main2.v > 0) {CurrentLight.Main2.v-=IR_REMOTE_STEP;}}
+void backHueUpAction() {CurrentLight.Back.h+=IR_REMOTE_STEP;}
+void backHueDownAction() {CurrentLight.Back.h-=IR_REMOTE_STEP;}
+void backSatUpAction() {if (CurrentLight.Back.s < 255) {CurrentLight.Back.s+=IR_REMOTE_STEP;}}
+void backSatDownAction() {if (CurrentLight.Back.s > 0) {CurrentLight.Back.s-=IR_REMOTE_STEP;}}
+void backValUpAction() {if (CurrentLight.Back.v < 255) {CurrentLight.Back.v+=IR_REMOTE_STEP;}}
+void backValDownAction() {if (CurrentLight.Back.v > 0) {CurrentLight.Back.v-=IR_REMOTE_STEP;}}
+void setPreset0Action() {Preset1 = CurrentLight;}
+void setPreset1Action() {Preset2 = CurrentLight;}
+void setPreset2Action() {Preset3 = CurrentLight;}
+void setPreset3Action() {Preset4 = CurrentLight;}
+void setPreset4Action() {Preset5 = CurrentLight;}
+void setPreset5Action() {Preset0 = CurrentLight;}
+void loadEEPROMAction() {/*loadEEPROM();*/}
+void saveEEPROMAction() {/*saveEEPROM();*/}
+void wipeEEPROMAction() {/*wipeEEPROM();, reset();?*/}
 
-//TEMPORARY
-void receive();
-void handleIRResults(byte button);
+const IRAction IRActions[] = {
+  {0,  3, onOffAction, false}, // ON_OFF
+  {1,  3, onOffAction, false}, // ON_OFF
+  {2,  3, onOffAction, false}, // ON_OFF
+  {0,  7, modeAction, false}, // MODE
+  {1,  7, modeAction, false}, // MODE
+  {2,  7, modeAction, false}, // MODE
+  {0, 11, brightnessUpAction}, // BRIGHTNESS_UP
+  {1, 11, brightnessUpAction}, // BRIGHTNESS_UP
+  {2, 11, brightnessUpAction}, // BRIGHTNESS_UP
+  {0, 15, brightnessDownAction}, // BRIGHTNESS_DOWN
+  {1, 15, brightnessDownAction}, // BRIGHTNESS_DOWN
+  {2, 15, brightnessDownAction}, // BRIGHTNESS_DOWN
+  {0,  0, usePreset0Action}, // USE_PRESET0
+  {0,  1, usePreset1Action}, // USE_PRESET1
+  {0,  2, usePreset2Action}, // USE_PRESET2
+  {0,  4, usePreset3Action}, // USE_PRESET3
+  {0,  5, usePreset4Action}, // USE_PRESET4
+  {0,  6, usePreset5Action}, // USE_PRESET5
+  {1,  0, main1HueUpAction}, // MAIN1_HUE_UP
+  {1,  4, main1HueDownAction}, // MAIN1_HUE_DOWN
+  {1,  1, main1SatUpAction}, // MAIN1_SAT_UP
+  {1,  5, main1SatDownAction}, // MAIN1_SAT_DOWN
+  {1,  2, main1ValUpAction}, // MAIN1_VAL_UP
+  {1,  6, main1ValDownAction}, // MAIN1_VAL_DOWN
+  {1,  8, main2HueUpAction}, // MAIN2_HUE_UP
+  {1, 12, main2HueDownAction}, // MAIN2_HUE_DOWN
+  {1,  9, main2SatUpAction}, // MAIN2_SAT_UP
+  {1, 13, main2SatDownAction}, // MAIN2_SAT_DOWN
+  {1, 10, main2ValUpAction}, // MAIN2_VAL_UP
+  {1, 14, main2ValDownAction}, // MAIN2_VAL_DOWN
+  {1, 16, backHueUpAction}, // BACK_HUE_UP
+  {1, 20, backHueDownAction}, // BACK_HUE_DOWN
+  {1, 17, backSatUpAction}, // BACK_SAT_UP
+  {1, 21, backSatDownAction}, // BACK_SAT_DOWN
+  {1, 18, backValUpAction}, // BACK_VAL_UP
+  {1, 22, backValDownAction}, // BACK_VAL_DOWN
+  {2,  0, setPreset0Action}, // SET_PRESET0
+  {2,  1, setPreset1Action}, // SET_PRESET1
+  {2,  2, setPreset2Action}, // SET_PRESET2
+  {2,  4, setPreset3Action}, // SET_PRESET3
+  {2,  5, setPreset4Action}, // SET_PRESET4
+  {2,  6, setPreset5Action}, // SET_PRESET5
+};
 
 
 void setup() {
@@ -252,14 +344,15 @@ void fade(lightData targetLight) {
 }
 
 void status(int hue, uint16_t duration, int val, int sat) {
-  if (hue == StatusFadeData[HUE].end && sat == StatusFadeData[SAT].end && val == StatusFadeData[VAL].end)
-  {return;} // No change required
-
+  // Set status duration even if no change in color
   if (duration == 0) {
     StatusEndTime = 0; // Infinite
   } else {
     StatusEndTime = millis() + duration; // Set time for status led to turn off
   }
+  
+  if (hue == StatusFadeData[HUE].end && sat == StatusFadeData[SAT].end && val == StatusFadeData[VAL].end)
+  {return;} // No change required
 
   StatusFadeStartTime = millis();
 
@@ -397,41 +490,36 @@ void recieveCallbackHandler() {
   IrReceiver.decode(); // fill IrReceiver.decodedIRData
   IrReceiver.resume(); // enable receiving the next value
 
-  receive(); // TEMPORARY
-  // Shorter???, TinyReciever.h?, IRCommandDispatcher.h?
-}
-
-void receive() {
-  static unsigned long nextSwitchTime = 0;
-  static byte button = 0;
-
-  if (IrReceiver.decodedIRData.address == 0xEF00) {
-      button = IrReceiver.decodedIRData.command + 1;
-  }
-
-  // Serial.print("Value: ");
-  // Serial.print(IrReceiver.decodedIRData.decodedRawData);
-  // Serial.print(" (0x");
-  // Serial.print(IrReceiver.decodedIRData.decodedRawData, HEX);
-  // Serial.print("); Adress: 0x");
-  // Serial.print(IrReceiver.decodedIRData.address, HEX);
-  // Serial.print(", Command: ");
-  // Serial.print(IrReceiver.decodedIRData.command);
-  // Serial.print(" (0x");
-  // Serial.print(IrReceiver.decodedIRData.command, HEX);
-  // Serial.print(") || Button: ");
-  // Serial.println(button);
-
   if (IrReceiver.decodedIRData.address != 0xEF00) {
-      // Serial.println(F("Wrong address!"));
+    return;
+  }
+  if (IrReceiver.decodedIRData.flags == IRDATA_FLAGS_IS_REPEAT) {
+    if (LastIRCodeTime + IR_REPEAT_IGNORE_TIME_ms > millis() || LastIRCodeTime +IR_CODE_FORGET_TIME_ms < millis()) {
+      Serial.println(F("Ignoring repeat."));
       return;
-  } else if (button == 4 && IrReceiver.decodedIRData.decodedRawData == 0) {
-      Serial.println(F("On button repeat off!"));
-      return;
+    }
   }
 
-  handleIRResults(button);
+  LastIRCodeTime = millis();
 
+  // Search for the action in the IRActions list
+  for (const auto& action : IRActions) {
+    // Check if the mode matches first (faster)
+    if (action.mode == mode) {
+      // Check if the IR command matches
+      if (action.IrCommand == IrReceiver.decodedIRData.command) {
+        // Check if the action is repeatable and if the command is a repeat
+        if (!action.repeatable && IrReceiver.decodedIRData.flags == IRDATA_FLAGS_IS_REPEAT) {
+          return;
+        }
+        // Execute the action
+        action.action();
+        break;
+      }
+    }
+  }
+
+  // Set status led according to the current mode
   switch (mode)
   {
   case 0:
@@ -447,227 +535,5 @@ void receive() {
   default:
     break;
   }
-
-  Serial.print("Pressed: ");
-  Serial.print(button);
-  Serial.print(" in mode: ");
-  Serial.println(mode);
-
-  nextSwitchTime = millis() + IR_CODE_FORGET_TIME_ms;
-    
-
-  if(nextSwitchTime != 0) {
-    if(nextSwitchTime < millis()) {
-    nextSwitchTime = 0;
-    button = 0;
-    Serial.println(F("Forgot last pressed button."));
-    }
-  }
-
+  fade(500, CurrentLight);
 }
-
-void handleIRResults(byte button) {
-    if (button == 4) {
-      On=!On;
-      fade(500, TargetLight);
-      return;
-    }
-
-    if (!On) {
-        return;
-    }
-    
-    switch (button) {
-        case 8:
-            mode++;
-            if(mode > 2) {
-                mode = 0;
-            }
-            break;
-        case 12:
-            TargetLight.Brightness += 2;
-            break;
-        case 16:
-            TargetLight.Brightness -= 2;
-            break;
-    }
-    switch (mode) {
-        case 0:
-            switch (button)
-            {
-            case 1:
-                TargetLight.Main1 = Preset0.Main1;
-                TargetLight.Main2 = Preset0.Main2;
-                TargetLight.Back = Preset0.Back;
-                TargetLight.Brightness = Preset0.Brightness;
-                break;
-            case 2:
-                TargetLight.Main1 = Preset1.Main1;
-                TargetLight.Main2 = Preset1.Main2;
-                TargetLight.Back = Preset1.Back;
-                TargetLight.Brightness = Preset1.Brightness;
-                break;
-            case 3:
-                TargetLight.Main1 = Preset2.Main1;
-                TargetLight.Main2 = Preset2.Main2;
-                TargetLight.Back = Preset2.Back;
-                TargetLight.Brightness = Preset2.Brightness;
-                break;
-            case 5:
-                TargetLight.Main1 = Preset3.Main1;
-                TargetLight.Main2 = Preset3.Main2;
-                TargetLight.Back = Preset3.Back;
-                TargetLight.Brightness = Preset3.Brightness;
-                break;
-            case 6:
-                TargetLight.Main1 = Preset4.Main1;
-                TargetLight.Main2 = Preset4.Main2;
-                TargetLight.Back = Preset4.Back;
-                TargetLight.Brightness = Preset4.Brightness;
-                break;
-            case 7:
-                TargetLight.Main1 = Preset5.Main1;
-                TargetLight.Main2 = Preset5.Main2;
-                TargetLight.Back = Preset5.Back;
-                TargetLight.Brightness = Preset5.Brightness;
-                break;
-            
-            default:
-                break;
-            }
-            break;
-        case 1:
-            switch (button) {
-            case 1:
-                TargetLight.Main1.h += 2;
-                break;
-            case 5:
-                TargetLight.Main1.h -= 2;
-                break;
-            case 2:
-                TargetLight.Main1.s += 2;
-                break;
-            case 6:
-                TargetLight.Main1.s -= 2;
-                break;
-            case 3:
-                TargetLight.Main1.v += 2;
-                break;
-            case 7:
-                TargetLight.Main1.v -= 2;
-                break;
-
-            case 9:
-                TargetLight.Main2.h += 2;
-                break;
-            case 13:
-                TargetLight.Main2.h -= 2;
-                break;
-            case 10:
-                TargetLight.Main2.s += 2;
-                break;
-            case 14:
-                TargetLight.Main2.s -= 2;
-                break;
-            case 11:
-                TargetLight.Main2.v += 2;
-                break;
-            case 15:
-                TargetLight.Main2.v -= 2;
-                break;
-
-            case 17:
-                TargetLight.Back.h += 2;
-                break;
-            case 21:
-                TargetLight.Back.h -= 2;
-                break;
-            case 18:
-                TargetLight.Back.s += 2;
-                break;
-            case 22:
-                TargetLight.Back.s -= 2;
-                break;
-            case 19:
-                TargetLight.Back.v += 2;
-                break;
-            case 23:
-                TargetLight.Back.v -= 2;
-                break;
-
-            default:
-                break;
-            }
-            break;
-
-        // case 2:
-        //     switch (button) {
-        //     case 1:
-        //         Preset1.Main1 = Main1;
-        //         Preset1.Main2 = Main2;
-        //         Preset1.Back = Back;
-        //         Preset1.Brightness = brightness;
-        //         DefPresetNum = 1;
-        //         Serial.println("Current colors saved to slot 1.");
-        //         break;
-        //     case 2:
-        //         Preset2.Main1 = Main1;
-        //         Preset2.Main2 = Main2;
-        //         Preset2.Back = Back;
-        //         Preset2.Brightness = brightness;
-        //         DefPresetNum = 2;
-        //         Serial.println("Current colors saved to slot 2.");
-        //         break;
-        //     case 3:
-        //         Preset3.Main1 = Main1;
-        //         Preset3.Main2 = Main2;
-        //         Preset3.Back = Back;
-        //         Preset3.Brightness = brightness;
-        //         DefPresetNum = 3;
-        //         Serial.println("Current colors saved to slot 3.");
-        //         break;
-        //     case 5:
-        //         Preset4.Main1 = Main1;
-        //         Preset4.Main2 = Main2;
-        //         Preset4.Back = Back;
-        //         Preset4.Brightness = brightness;
-        //         DefPresetNum = 4;
-        //         Serial.println("Current colors saved to slot 4.");
-        //         break;
-        //     case 6:
-        //         Preset5.Main1 = Main1;
-        //         Preset5.Main2 = Main2;
-        //         Preset5.Back = Back;
-        //         Preset5.Brightness = brightness;
-        //         DefPresetNum = 5;
-        //         Serial.println("Current colors saved to slot 5.");
-        //         break;
-        //     case 7:
-        //         Preset6.Main1 = Main1;
-        //         Preset6.Main2 = Main2;
-        //         Preset6.Back = Back;
-        //         Preset6.Brightness = brightness;
-        //         DefPresetNum = 6;
-        //         Serial.println("Current colors saved to slot 6.");
-        //         break;
-        //     case 22:
-        //         EEPROM.wipe();
-        //         ESP.restart();
-        //         break;
-        //     case 23:
-        //         loadEEPROM();
-        //         break;
-        //     case 24:
-        //         saveEEPROM();
-        //         break;
-        //     default:
-        //         break;
-        //     }
-        //     break;
-    }
-    fade(500, TargetLight);
-}
-
-
-
-
