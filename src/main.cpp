@@ -201,6 +201,7 @@ void loadEEPROMAction() {/*loadEEPROM();*/}
 void saveEEPROMAction() {/*saveEEPROM();*/}
 void wipeEEPROMAction() {/*wipeEEPROM();, reset();?*/}
 
+#ifndef WOKWI
 const IRAction IRActions[] = {
   {0,  3, onOffAction, false}, // ON_OFF
   {1,  3, onOffAction, false}, // ON_OFF
@@ -245,6 +246,50 @@ const IRAction IRActions[] = {
   {2,  5, setPreset4Action}, // SET_PRESET4
   {2,  6, setPreset5Action}, // SET_PRESET5
 };
+#elif defined(WOKWI)
+const IRAction IRActions[] = {
+  {0, 162, onOffAction, false}, // ON_OFF
+  {1, 162, onOffAction, false}, // ON_OFF
+  {2, 162, onOffAction, false}, // ON_OFF
+  {0, 226, modeAction, false}, // MODE
+  {1, 226, modeAction, false}, // MODE
+  {2, 226, modeAction, false}, // MODE
+  {0,  34, brightnessUpAction}, // BRIGHTNESS_UP
+  {2,  34, brightnessUpAction}, // BRIGHTNESS_UP
+  {0, 224, brightnessDownAction}, // BRIGHTNESS_DOWN
+  {2, 224, brightnessDownAction}, // BRIGHTNESS_DOWN
+  {0,  48, usePreset0Action}, // USE_PRESET0
+  {0,  24, usePreset1Action}, // USE_PRESET1
+  {0, 122, usePreset2Action}, // USE_PRESET2
+  {0,  16, usePreset3Action}, // USE_PRESET3
+  {0,  56, usePreset4Action}, // USE_PRESET4
+  {0,  90, usePreset5Action}, // USE_PRESET5
+  {1,  34, main1HueUpAction}, // MAIN1_HUE_UP
+  {1, 224, main1HueDownAction}, // MAIN1_HUE_DOWN
+  {1,  2, main1SatUpAction}, // MAIN1_SAT_UP
+  {1, 168, main1SatDownAction}, // MAIN1_SAT_DOWN
+  {1, 194, main1ValUpAction}, // MAIN1_VAL_UP
+  {1, 144, main1ValDownAction}, // MAIN1_VAL_DOWN
+  {1, 104, main2HueUpAction}, // MAIN2_HUE_UP
+  {1,  48, main2HueDownAction}, // MAIN2_HUE_DOWN
+  {1, 152, main2SatUpAction}, // MAIN2_SAT_UP
+  {1,  24, main2SatDownAction}, // MAIN2_SAT_DOWN
+  {1, 176, main2ValUpAction}, // MAIN2_VAL_UP
+  {1, 122, main2ValDownAction}, // MAIN2_VAL_DOWN
+  {1,  16, backHueUpAction}, // BACK_HUE_UP
+  {1,  66, backHueDownAction}, // BACK_HUE_DOWN
+  {1,  56, backSatUpAction}, // BACK_SAT_UP
+  {1,  74, backSatDownAction}, // BACK_SAT_DOWN
+  {1,  90, backValUpAction}, // BACK_VAL_UP
+  {1,  82, backValDownAction}, // BACK_VAL_DOWN
+  {2,  48, setPreset0Action}, // SET_PRESET0
+  {2,  24, setPreset1Action}, // SET_PRESET1
+  {2, 122, setPreset2Action}, // SET_PRESET2
+  {2,  16, setPreset3Action}, // SET_PRESET3
+  {2,  56, setPreset4Action}, // SET_PRESET4
+  {2,  90, setPreset5Action}, // SET_PRESET5
+};
+#endif
 
 
 void setup() {
@@ -491,11 +536,17 @@ void recieveCallbackHandler() {
   IrReceiver.resume(); // enable receiving the next value
 
   if (IrReceiver.decodedIRData.address != 0xEF00) {
+    Serial.print(F("Invalid IR address: 0x"));
+    Serial.print(IrReceiver.decodedIRData.address, HEX);
+    Serial.print(F(" Command: "));
+    Serial.println(IrReceiver.decodedIRData.command);
+    #ifndef WOKWI
     return;
+    #endif
   }
   if (IrReceiver.decodedIRData.flags == IRDATA_FLAGS_IS_REPEAT) {
     if (LastIRCodeTime + IR_REPEAT_IGNORE_TIME_ms > millis() || LastIRCodeTime +IR_CODE_FORGET_TIME_ms < millis()) {
-      Serial.println(F("Ignoring repeat."));
+      // Serial.println(F("Ignoring repeat."));
       return;
     }
   }

@@ -1,0 +1,5 @@
+[wokwi]
+version = 1
+firmware = '.pio\build\Wokwi_uno\firmware.hex'
+elf = '.pio\build\Wokwi_uno\firmware.elf'
+rfc2217ServerPort = 4000
