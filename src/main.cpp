@@ -16,6 +16,15 @@
 #include <FastLED.h>
 #include <IRremote.hpp>
 
+#ifdef DEBUG_ESP8266
+#include <GDBStub.h>
+#endif
+
+#ifdef DEBUG_ATMEGA328P
+#include "avr8-stub.h"
+// #include "app_api.h" // only needed for breakponts in flash
+#endif
+
 // --- Pin Config ---
                       // strip - Color - Uno
   #define PIN_LED   3   //  Data - Green - Pin 3
@@ -293,7 +302,16 @@ const IRAction IRActions[] = {
 
 
 void setup() {
+  #ifdef DEBUG_ATMEGA328P
+  debug_init(); // Needs to be called as first thing in setup
+  #endif
+
   Serial.begin(BAUDRATE);
+  
+  #ifdef DEBUG_ESP8266
+  gdbstub_init();
+  #endif
+
   Serial.println(F("START " __FILE__ " from " __DATE__));
   Serial.println(F("Setting up..."));
 
