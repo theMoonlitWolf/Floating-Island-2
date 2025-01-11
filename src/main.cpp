@@ -46,7 +46,7 @@
   #define IR_REPEAT_IGNORE_TIME_ms 100
   #define MINIMUM_FADE_TIME_ms 50
   #define STATUS_FADE_TIME_ms 150 
-  #define IR_REMOTE_STEP 2
+  #define IR_REMOTE_STEP 10
 // ---
 
 // --- Define variables, classes and functions ---
@@ -306,14 +306,18 @@ void setup() {
   debug_init(); // Needs to be called as first thing in setup
   #endif
 
+  #ifndef DEBUG_ATMEGA328P
   Serial.begin(BAUDRATE);
+  #endif
   
   #ifdef DEBUG_ESP8266
   gdbstub_init();
   #endif
 
+  #ifndef DEBUG_ATMEGA328P
   Serial.println(F("START " __FILE__ " from " __DATE__));
   Serial.println(F("Setting up..."));
+  #endif
 
   FastLED.setBrightness(150);
   status(250);
@@ -328,7 +332,9 @@ void setup() {
   FastLED.setBrightness(CurrentLight.Brightness);
   FastLED.show();
 
+  #ifndef DEBUG_ATMEGA328P
   Serial.println(F("Setup done."));
+  #endif
 
   fade(100, Preset0);
   TargetLight = Preset0;
@@ -451,7 +457,6 @@ void status(int hue, uint16_t duration, int val, int sat) {
   }
 
   StatusFading = true; // Set fading flag
-  // Serial.println(F("Status CHSV set."));
 }
 
 byte fadeUpdate() {
@@ -553,18 +558,28 @@ void recieveCallbackHandler() {
   IrReceiver.decode(); // fill IrReceiver.decodedIRData
   IrReceiver.resume(); // enable receiving the next value
 
+  #ifdef DEBUG_ATMEGA328P
+  debug_message("IR received");
+  debug_message("Address: ");
+  debug_message((char*)IrReceiver.decodedIRData.address);
+  debug_message("Command: ");
+  debug_message((char*)IrReceiver.decodedIRData.command);
+  #endif
+
   if (IrReceiver.decodedIRData.address != 0xEF00) {
-    Serial.print(F("Invalid IR address: 0x"));
-    Serial.print(IrReceiver.decodedIRData.address, HEX);
-    Serial.print(F(" Command: "));
-    Serial.println(IrReceiver.decodedIRData.command);
+    #ifdef DEBUG_ATMEGA328P
+    debug_message("Invalid IR address");
+    #endif
+  
     #ifndef WOKWI
     return;
     #endif
   }
   if (IrReceiver.decodedIRData.flags == IRDATA_FLAGS_IS_REPEAT) {
     if (LastIRCodeTime + IR_REPEAT_IGNORE_TIME_ms > millis() || LastIRCodeTime +IR_CODE_FORGET_TIME_ms < millis()) {
-      // Serial.println(F("Ignoring repeat."));
+      #ifdef DEBUG_ATMEGA328P
+      debug_message("Ignoring repeat");
+      #endif
       return;
     }
   }
