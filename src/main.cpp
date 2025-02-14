@@ -11,7 +11,7 @@
 
 
 #include <Arduino.h>
-//#include <EEPROM.h>
+#include <EEPROM.h>
 
 #include <FastLED.h>
 #include <IRremote.hpp>
@@ -35,8 +35,6 @@
   #define PIN_IR    2   //  Data - Red   - Pin 2
                       //  GND  - White - GND
                       //  VCC  - Black - 5V
-
-  #define PIN_BUTTON  4
 // ---
 
 // --- CONFIG ---
@@ -47,6 +45,7 @@
   #define MINIMUM_FADE_TIME_ms 50
   #define STATUS_FADE_TIME_ms 150 
   #define IR_REMOTE_STEP 10
+  #define EEPROM_PROJECT_ID 0x01
 // ---
 
 // --- Define variables, classes and functions ---
@@ -136,8 +135,7 @@ unsigned long StatusEndTime = 0;
 bool StatusFading = false;
 
 // Light variables
-lightData CurrentLight = {0, CHSV(80,255,255), CHSV(120,255,255), CHSV(20,255,255)};
-lightData TargetLight = {0, CHSV(80,255,255), CHSV(120,255,255), CHSV(20,255,255)};
+lightData CurrentLight = {127, CHSV(80,255,255), CHSV(120,255,255), CHSV(20,255,255)};
 fadeData FadeData[10];
 fadeData StatusFadeData[3];
 
@@ -171,6 +169,14 @@ void statusUpdate(bool skipFade = false);
 // Callback for every received IR signal. Handles the IR signals.
 void recieveCallbackHandler();
 
+// EEPROM functions
+void saveEEPROM();
+void loadEEPROM();
+
+void reboot() {
+  asm volatile ("jmp 0"); // Reset (jump to bootloader)
+}
+
 // IR signal action callbacks
 void onOffAction() {On=!On;}
 void modeAction() {mode = (mode + 1) % 3;}
@@ -200,15 +206,15 @@ void backSatUpAction() {if (CurrentLight.Back.s < 255) {CurrentLight.Back.s+=IR_
 void backSatDownAction() {if (CurrentLight.Back.s > 0) {CurrentLight.Back.s-=IR_REMOTE_STEP;}}
 void backValUpAction() {if (CurrentLight.Back.v < 255) {CurrentLight.Back.v+=IR_REMOTE_STEP;}}
 void backValDownAction() {if (CurrentLight.Back.v > 0) {CurrentLight.Back.v-=IR_REMOTE_STEP;}}
-void setPreset0Action() {Preset1 = CurrentLight;}
-void setPreset1Action() {Preset2 = CurrentLight;}
-void setPreset2Action() {Preset3 = CurrentLight;}
-void setPreset3Action() {Preset4 = CurrentLight;}
-void setPreset4Action() {Preset5 = CurrentLight;}
-void setPreset5Action() {Preset0 = CurrentLight;}
-void loadEEPROMAction() {/*loadEEPROM();*/}
-void saveEEPROMAction() {/*saveEEPROM();*/}
-void wipeEEPROMAction() {/*wipeEEPROM();, reset();?*/}
+void setPreset0Action() {Preset0 = CurrentLight;}
+void setPreset1Action() {Preset1 = CurrentLight;}
+void setPreset2Action() {Preset2 = CurrentLight;}
+void setPreset3Action() {Preset3 = CurrentLight;}
+void setPreset4Action() {Preset4 = CurrentLight;}
+void setPreset5Action() {Preset5 = CurrentLight;}
+void loadEEPROMAction() {loadEEPROM();}
+void saveEEPROMAction() {saveEEPROM();}
+void wipeEEPROMAction() {EEPROM.update(0, 0); reboot();}
 
 #ifndef WOKWI
 const IRAction IRActions[] = {
@@ -254,6 +260,9 @@ const IRAction IRActions[] = {
   {2,  4, setPreset3Action}, // SET_PRESET3
   {2,  5, setPreset4Action}, // SET_PRESET4
   {2,  6, setPreset5Action}, // SET_PRESET5
+  {2, 21, wipeEEPROMAction}, // WIPE_EEPROM
+  {2, 22, loadEEPROMAction}, // LOAD_EEPROM
+  {2, 23, saveEEPROMAction}, // SAVE_EEPROM
 };
 #elif defined(WOKWI)
 const IRAction IRActions[] = {
@@ -319,31 +328,37 @@ void setup() {
   Serial.println(F("Setting up..."));
   #endif
 
+  FastLED.addLeds<SK6812, PIN_LED, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(150);
+  FastLED.show();
+
   status(250);
   statusUpdate(0);
 
-  pinMode(PIN_BUTTON, INPUT_PULLUP);
+  if (EEPROM.read(0) == EEPROM_PROJECT_ID) {
+    loadEEPROM();
+  } else {
+    saveEEPROM();
+    fade(100, CurrentLight);
+  }
 
   IrReceiver.begin(PIN_IR, ENABLE_LED_FEEDBACK);
   IrReceiver.registerReceiveCompleteCallback(recieveCallbackHandler);
-
-  FastLED.addLeds<SK6812, PIN_LED, GRB>(leds, NUM_LEDS);
-  FastLED.setBrightness(CurrentLight.Brightness);
-  FastLED.show();
 
   #ifndef DEBUG_ATMEGA328P
   Serial.println(F("Setup done."));
   #endif
 
-  fade(100, Preset0);
-  TargetLight = Preset0;
   status(90, 500);
 }
 
 void loop() {
   fadeUpdate();
   statusUpdate();
+
+  if (millis() > 4294960000UL) { //4294967295
+    reboot();
+  } 
 
   delay(10);
 }
@@ -620,4 +635,33 @@ void recieveCallbackHandler() {
     break;
   }
   fade(500, CurrentLight);
+}
+
+void saveEEPROM() {
+  Serial.println(F("Saving to EEPROM..."));
+  EEPROM.update(0, EEPROM_PROJECT_ID);
+  EEPROM.put(1, On);
+  EEPROM.put(2, Layout);
+  EEPROM.put(3, CurrentLight); // Startup color
+  EEPROM.put(3 + sizeof(lightData), Preset0);
+  EEPROM.put(3 + sizeof(lightData)*2, Preset1);
+  EEPROM.put(3 + sizeof(lightData)*3, Preset2);
+  EEPROM.put(3 + sizeof(lightData)*4, Preset3);
+  EEPROM.put(3 + sizeof(lightData)*5, Preset4);
+  EEPROM.put(3 + sizeof(lightData)*6, Preset5);
+}
+
+void loadEEPROM() {
+  Serial.println(F("Loading from EEPROM..."));
+  EEPROM.get(1, On);
+  EEPROM.get(2, Layout);
+  EEPROM.get(3, CurrentLight); // Startup color
+  EEPROM.get(3 + sizeof(lightData), Preset0);
+  EEPROM.get(3 + sizeof(lightData)*2, Preset1);
+  EEPROM.get(3 + sizeof(lightData)*3, Preset2);
+  EEPROM.get(3 + sizeof(lightData)*4, Preset3);
+  EEPROM.get(3 + sizeof(lightData)*5, Preset4);
+  EEPROM.get(3 + sizeof(lightData)*6, Preset5);
+
+  fade(100, CurrentLight);
 }
