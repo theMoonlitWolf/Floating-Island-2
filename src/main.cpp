@@ -3,8 +3,9 @@
  * A RGB LED lamp
  * 
  * TODO:
+ * - debug messages
+ * - Leds not working (all white) when debug - wrong timing? ("runs 100 times slower when using ram breakpoints") - use falsh breakpoints - new bootloader!!!
  * - TinyReciever.h?, IRCommandDispatcher.h?, other cleaner uproach?
- * - Implement EEPROM saving and loading
  * - Functions from FastLED
  *    - noise.h?, color.h?, colorpalettes.h?
  */
@@ -26,15 +27,15 @@
 #endif
 
 // --- Pin Config ---
-                      // strip - Color - Uno
-  #define PIN_LED   3   //  Data - Green - Pin 3
-                      //  GND  - White - GND
-                      //  VCC  - Red   - 5V
-
-                      //  IR   - Color - Uno
-  #define PIN_IR    2   //  Data - Red   - Pin 2
-                      //  GND  - White - GND
-                      //  VCC  - Black - 5V
+  #ifdef BOARD_UNO
+  #define PIN_LED   4 
+  #define PIN_IR    3
+  // pin 2 reserved for debugger interrupt (interrupts are 2 and 3)
+  #endif
+  #ifdef BOARD_ESP8266
+  #define PIN_LED   3
+  #define PIN_IR    0
+  #endif
 // ---
 
 // --- CONFIG ---
@@ -133,6 +134,10 @@ bool Fading = false;
 long StatusFadeStartTime = 0;
 unsigned long StatusEndTime = 0;
 bool StatusFading = false;
+
+#ifdef DEBUG_ATMEGA328P
+unsigned long DebugTimer = 0;
+#endif
 
 // Light variables
 lightData CurrentLight = {127, CHSV(80,255,255), CHSV(120,255,255), CHSV(20,255,255)};
@@ -262,7 +267,7 @@ const IRAction IRActions[] = {
   {2,  6, setPreset5Action}, // SET_PRESET5
   {2, 21, wipeEEPROMAction}, // WIPE_EEPROM
   {2, 22, loadEEPROMAction}, // LOAD_EEPROM
-  {2, 23, saveEEPROMAction}, // SAVE_EEPROM
+  {2, 23, saveEEPROMAction} // SAVE_EEPROM
 };
 #elif defined(WOKWI)
 const IRAction IRActions[] = {
@@ -313,6 +318,10 @@ const IRAction IRActions[] = {
 void setup() {
   #ifdef DEBUG_ATMEGA328P
   debug_init(); // Needs to be called as first thing in setup
+  delay(1000); // Wait for serial monitor to connect
+  DebugTimer = millis();
+  debug_message("START " __FILE__ " from " __DATE__ " in debug mode");
+  debug_message("Setting up...");
   #endif
 
   #ifndef DEBUG_ATMEGA328P
@@ -327,6 +336,7 @@ void setup() {
   Serial.println(F("START " __FILE__ " from " __DATE__));
   Serial.println(F("Setting up..."));
   #endif
+
 
   FastLED.addLeds<SK6812, PIN_LED, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(150);
@@ -347,6 +357,13 @@ void setup() {
 
   #ifndef DEBUG_ATMEGA328P
   Serial.println(F("Setup done."));
+  #endif
+
+  #ifdef DEBUG_ATMEGA328P
+  debug_message("Setup done.");
+  char msg[20];
+  sprintf(msg, "Took %lu ms", millis() - DebugTimer);
+  debug_message(msg);
   #endif
 
   status(90, 500);
@@ -574,11 +591,12 @@ void recieveCallbackHandler() {
   IrReceiver.resume(); // enable receiving the next value
 
   #ifdef DEBUG_ATMEGA328P
+  char msg[50];
   debug_message("IR received");
-  debug_message("Address: ");
-  debug_message((char*)IrReceiver.decodedIRData.address);
-  debug_message("Command: ");
-  debug_message((char*)IrReceiver.decodedIRData.command);
+  sprintf(msg, "Address: 0x%04X", IrReceiver.decodedIRData.address);
+  debug_message(msg);
+  sprintf(msg, "Command: 0x%02X", IrReceiver.decodedIRData.command);
+  debug_message(msg);
   #endif
 
   if (IrReceiver.decodedIRData.address != 0xEF00) {
@@ -638,7 +656,11 @@ void recieveCallbackHandler() {
 }
 
 void saveEEPROM() {
-  Serial.println(F("Saving to EEPROM..."));
+  #ifdef DEBUG_ATMEGA328P
+    char msg[100];
+    debug_message("Saving to EEPROM...");
+    DebugTimer = millis();
+  #endif
   EEPROM.update(0, EEPROM_PROJECT_ID);
   EEPROM.put(1, On);
   EEPROM.put(2, Layout);
@@ -649,10 +671,48 @@ void saveEEPROM() {
   EEPROM.put(3 + sizeof(lightData)*4, Preset3);
   EEPROM.put(3 + sizeof(lightData)*5, Preset4);
   EEPROM.put(3 + sizeof(lightData)*6, Preset5);
+  #ifdef DEBUG_ATMEGA328P
+    debug_message("Saved data:");
+    sprintf(msg, "Project ID: 0x%02X, reads: 0x%02X", EEPROM_PROJECT_ID, EEPROM.read(0));
+    debug_message(msg);
+    sprintf(msg, "On: %s, reads: %s", On ? "true" : "false", EEPROM.read(1) ? "true" : "false");
+    debug_message(msg);
+    sprintf(msg, "Layout: %d, reads: %d", Layout, EEPROM.read(2));
+    debug_message(msg);
+
+    // sprintf(msg, "CurrentLight: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   CurrentLight.Brightness, CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v, CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v, CurrentLight.Back.h, CurrentLight.Back.s, CurrentLight.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset0: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset0.Brightness, Preset0.Main1.h, Preset0.Main1.s, Preset0.Main1.v, Preset0.Main2.h, Preset0.Main2.s, Preset0.Main2.v, Preset0.Back.h, Preset0.Back.s, Preset0.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset1: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset1.Brightness, Preset1.Main1.h, Preset1.Main1.s, Preset1.Main1.v, Preset1.Main2.h, Preset1.Main2.s, Preset1.Main2.v, Preset1.Back.h, Preset1.Back.s, Preset1.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset2: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset2.Brightness, Preset2.Main1.h, Preset2.Main1.s, Preset2.Main1.v, Preset2.Main2.h, Preset2.Main2.s, Preset2.Main2.v, Preset2.Back.h, Preset2.Back.s, Preset2.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset3: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset3.Brightness, Preset3.Main1.h, Preset3.Main1.s, Preset3.Main1.v, Preset3.Main2.h, Preset3.Main2.s, Preset3.Main2.v, Preset3.Back.h, Preset3.Back.s, Preset3.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset4: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset4.Brightness, Preset4.Main1.h, Preset4.Main1.s, Preset4.Main1.v, Preset4.Main2.h, Preset4.Main2.s, Preset4.Main2.v, Preset4.Back.h, Preset4.Back.s, Preset4.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset5: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset5.Brightness, Preset5.Main1.h, Preset5.Main1.s, Preset5.Main1.v, Preset5.Main2.h, Preset5.Main2.s, Preset5.Main2.v, Preset5.Back.h, Preset5.Back.s, Preset5.Back.v);
+    // debug_message(msg);
+
+    sprintf(msg, "Took %lu ms", millis() - DebugTimer);
+    debug_message(msg);
+  #endif
 }
 
 void loadEEPROM() {
-  Serial.println(F("Loading from EEPROM..."));
+  #ifdef DEBUG_ATMEGA328P
+    char msg[100];
+    debug_message("Loading from EEPROM...");
+    DebugTimer = millis();
+  #endif
   EEPROM.get(1, On);
   EEPROM.get(2, Layout);
   EEPROM.get(3, CurrentLight); // Startup color
@@ -664,4 +724,39 @@ void loadEEPROM() {
   EEPROM.get(3 + sizeof(lightData)*6, Preset5);
 
   fade(100, CurrentLight);
+
+  #ifdef DEBUG_ATMEGA328P
+    debug_message("Loaded data:");
+    sprintf(msg, "On: %s", On ? "true" : "false");
+    debug_message(msg);
+    sprintf(msg, "Layout: %d", Layout);
+    debug_message(msg);
+
+    // sprintf(msg, "CurrentLight: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   CurrentLight.Brightness, CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v, CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v, CurrentLight.Back.h, CurrentLight.Back.s, CurrentLight.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset0: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset0.Brightness, Preset0.Main1.h, Preset0.Main1.s, Preset0.Main1.v, Preset0.Main2.h, Preset0.Main2.s, Preset0.Main2.v, Preset0.Back.h, Preset0.Back.s, Preset0.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset1: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset1.Brightness, Preset1.Main1.h, Preset1.Main1.s, Preset1.Main1.v, Preset1.Main2.h, Preset1.Main2.s, Preset1.Main2.v, Preset1.Back.h, Preset1.Back.s, Preset1.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset2: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset2.Brightness, Preset2.Main1.h, Preset2.Main1.s, Preset2.Main1.v, Preset2.Main2.h, Preset2.Main2.s, Preset2.Main2.v, Preset2.Back.h, Preset2.Back.s, Preset2.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset3: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset3.Brightness, Preset3.Main1.h, Preset3.Main1.s, Preset3.Main1.v, Preset3.Main2.h, Preset3.Main2.s, Preset3.Main2.v, Preset3.Back.h, Preset3.Back.s, Preset3.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset4: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset4.Brightness, Preset4.Main1.h, Preset4.Main1.s, Preset4.Main1.v, Preset4.Main2.h, Preset4.Main2.s, Preset4.Main2.v, Preset4.Back.h, Preset4.Back.s, Preset4.Back.v);
+    // debug_message(msg);
+    // sprintf(msg, "Preset5: Brightness: %d Main1: H: %d S: %d V: %d, Main2: H: %d S: %d V: %d, Back: H: %d S: %d V: %d,",
+    //   Preset5.Brightness, Preset5.Main1.h, Preset5.Main1.s, Preset5.Main1.v, Preset5.Main2.h, Preset5.Main2.s, Preset5.Main2.v, Preset5.Back.h, Preset5.Back.s, Preset5.Back.v);
+    // debug_message(msg);
+
+    debug_message("Set colors to LEDs");
+
+    sprintf(msg, "Took %lu ms", millis() - DebugTimer);
+    debug_message(msg);
+  #endif
 }
