@@ -27,12 +27,12 @@
 
 // --- Pin Config ---
                       // strip - Color - Uno
-  #define PIN_LED   3   //  Data - Green - Pin 3
+  #define PIN_LED   4   //  Data - Green - Pin 3
                       //  GND  - White - GND
                       //  VCC  - Red   - 5V
 
                       //  IR   - Color - Uno
-  #define PIN_IR    2   //  Data - Red   - Pin 2
+  #define PIN_IR    3   //  Data - Red   - Pin 2
                       //  GND  - White - GND
                       //  VCC  - Black - 5V
 // ---
