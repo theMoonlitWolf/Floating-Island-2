@@ -4,37 +4,45 @@
  * 
  * TODO:
  * - TinyReciever.h?, IRCommandDispatcher.h?, other cleaner uproach?
- * - Implement EEPROM saving and loading
  * - Functions from FastLED
  *    - noise.h?, color.h?, colorpalettes.h?
+ * - ESP01 Serial.print only prints first 36 chars, then nothing
+ * - ESP01 EEPROM does not seem to work
  */
 
 
 #include <Arduino.h>
+
+#if not defined(ESP8266) && not defined(__AVR_ATmega328P__) && not defined(__AVR_ATmega32U4__)
+#error "Unsupported platform!\n Please use ESP8266 or ATmega328P (Arduino Uno) or ATmega32U4 (Arduino Pro Micro)"
+#endif
+
+#if defined(ESP8266)
+#include <ESP_EEPROM.h>
+#else
 #include <EEPROM.h>
+#endif
 
 #include <FastLED.h>
 #include <IRremote.hpp>
 
-#ifdef DEBUG_ESP8266
+#if defined(DEBUG) && defined(ESP8266)
 #include <GDBStub.h>
 #endif
 
-#ifdef DEBUG_ATMEGA328P
+#if defined(DEBUG) && defined(__AVR_ATmega328P__)
 #include "avr8-stub.h"
 // #include "app_api.h" // only needed for breakponts in flash
 #endif
 
 // --- Pin Config ---
-                      // strip - Color - Uno
-  #define PIN_LED   4   //  Data - Green - Pin 3
-                      //  GND  - White - GND
-                      //  VCC  - Red   - 5V
-
-                      //  IR   - Color - Uno
-  #define PIN_IR    3   //  Data - Red   - Pin 2
-                      //  GND  - White - GND
-                      //  VCC  - Black - 5V
+#if defined(ESP8266)
+  #define PIN_LED   3
+  #define PIN_IR    0
+#else
+  #define PIN_LED   4
+  #define PIN_IR    3
+#endif
 // ---
 
 // --- CONFIG ---
@@ -174,7 +182,11 @@ void saveEEPROM();
 void loadEEPROM();
 
 void reboot() {
+  #if defined(ESP8266)
+  ESP.restart(); // Restart ESP8266
+  #elif defined(__AVR_ATmega328P__) || defined(__AVR_ATmega32U4__)
   asm volatile ("jmp 0"); // Reset (jump to bootloader)
+  #endif
 }
 
 // IR signal action callbacks
@@ -214,7 +226,7 @@ void setPreset4Action() {Preset4 = CurrentLight;}
 void setPreset5Action() {Preset5 = CurrentLight;}
 void loadEEPROMAction() {loadEEPROM();}
 void saveEEPROMAction() {saveEEPROM();}
-void wipeEEPROMAction() {EEPROM.update(0, 0); reboot();}
+void wipeEEPROMAction() {EEPROM.put(0, byte(0)); reboot();}
 
 #ifndef WOKWI
 const IRAction IRActions[] = {
@@ -317,6 +329,7 @@ void setup() {
 
   #ifndef DEBUG_ATMEGA328P
   Serial.begin(BAUDRATE);
+  delay(100);
   #endif
   
   #ifdef DEBUG_ESP8266
@@ -328,12 +341,17 @@ void setup() {
   Serial.println(F("Setting up..."));
   #endif
 
+  Serial.println("Setting up LEDs...");
   FastLED.addLeds<SK6812, PIN_LED, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(150);
   FastLED.show();
 
   status(250);
   statusUpdate(0);
+
+  #if defined(ESP8266)
+  EEPROM.begin(128); // Initialize EEPROM for ESP8266 (used 73 bytes?)
+  #endif
 
   if (EEPROM.read(0) == EEPROM_PROJECT_ID) {
     loadEEPROM();
@@ -639,7 +657,7 @@ void recieveCallbackHandler() {
 
 void saveEEPROM() {
   Serial.println(F("Saving to EEPROM..."));
-  EEPROM.update(0, EEPROM_PROJECT_ID);
+  EEPROM.put(0, byte(EEPROM_PROJECT_ID));
   EEPROM.put(1, On);
   EEPROM.put(2, Layout);
   EEPROM.put(3, CurrentLight); // Startup color
