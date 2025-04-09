@@ -328,7 +328,7 @@ void setup() {
   }
 
   debugPrintln(F("Setting up IR receiver..."));
-  IrReceiver.begin(PIN_IR, ENABLE_LED_FEEDBACK);
+  IrReceiver.begin(PIN_IR, DISABLE_LED_FEEDBACK);
   IrReceiver.registerReceiveCompleteCallback(recieveCallbackHandler);
 
   debugPrintln(F("Setup complete."));
