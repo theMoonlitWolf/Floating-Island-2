@@ -7,56 +7,16 @@
  * - Functions from FastLED
  *    - noise.h?, color.h?, colorpalettes.h?
  * - ESP01 Serial.print only prints first 36 chars, then nothing
- * - ESP01 EEPROM does not seem to work
- */
-
+ * - Blink when starting up and turned off from EEPROM
+*/
 
 #include <Arduino.h>
-
-#if not defined(ESP8266) && not defined(__AVR_ATmega328P__) && not defined(__AVR_ATmega32U4__)
-#error "Unsupported platform!\n Please use ESP8266 or ATmega328P (Arduino Uno) or ATmega32U4 (Arduino Pro Micro)"
-#endif
-
-#if defined(ESP8266)
-#include <ESP_EEPROM.h>
-#else
-#include <EEPROM.h>
-#endif
-
+#include <Config.h>
 #include <FastLED.h>
 #include <IRremote.hpp>
 
-#if defined(DEBUG) && defined(ESP8266)
-#include <GDBStub.h>
-#endif
-
-#if defined(DEBUG) && defined(__AVR_ATmega328P__)
-#include "avr8-stub.h"
-// #include "app_api.h" // only needed for breakponts in flash
-#endif
-
-// --- Pin Config ---
-#if defined(ESP8266)
-  #define PIN_LED   3
-  #define PIN_IR    0
-#else
-  #define PIN_LED   4
-  #define PIN_IR    3
-#endif
-// ---
-
-// --- CONFIG ---
-  #define BAUDRATE  115200  // Baudrate for Hardware Serial
-  #define NUM_LEDS  14      // Number of LEDs in the strip
-  #define IR_CODE_FORGET_TIME_ms 1000L
-  #define IR_REPEAT_IGNORE_TIME_ms 100
-  #define MINIMUM_FADE_TIME_ms 50
-  #define STATUS_FADE_TIME_ms 150 
-  #define IR_REMOTE_STEP 10
-  #define EEPROM_PROJECT_ID 0x01
-// ---
-
 // --- Define variables, classes and functions ---
+#pragma region ClassEnumStructs
 enum ledNum{
   MAIN1,
   MAIN2,
@@ -73,13 +33,13 @@ enum ledNum{
   BG9,
   STATUS1
 };
-
+ 
 enum mainLayout{
   DIAGONAL,
   SIDE_BY_SIDE,
   FRONT_TO_BACK
 };
-
+ 
 enum fadeDataItem{
   BRIGHTNESS,
   MAIN1_H,
@@ -92,29 +52,27 @@ enum fadeDataItem{
   BACK_S,
   BACK_V
 };
-
+ 
 enum HSVItem{
   HUE,
   SAT,
   VAL
 };
-
-enum IRFunctionItem{
-};
-
+  
 struct lightData {
   byte Brightness;
   CHSV Main1;
   CHSV Main2;
   CHSV Back;
 };
-
+ 
 struct fadeData {
   byte start;
   byte end;
   byte diff;
   int dir;
 };
+
 struct IRAction {
   byte mode; // Mode number (0-2)
   byte IrCommand; // IR command (0-23)
@@ -124,10 +82,12 @@ struct IRAction {
     : mode(m), IrCommand(cmd), action(act), repeatable(rep) {}
 };
 
-// classes
+#pragma endregion
+
+#pragma region VariablesClassInstances
 CRGB leds[NUM_LEDS];
 
-// working variables
+// Working variables
 bool On = true;
 byte mode = 0;
 mainLayout Layout = DIAGONAL;
@@ -154,8 +114,9 @@ lightData Preset3 = {127, CHSV(80,255,255), CHSV(90,255,255), CHSV(50,255,255)};
 lightData Preset4 = {127, CHSV(200,255,255), CHSV(230,255,255), CHSV(170,255,255)};
 lightData Preset5 = {127, CHSV(100,255,255), CHSV(110,255,255), CHSV(50,255,255)};
 
-// functions
+#pragma endregion
 
+#pragma region Functions
 // Fade to specified target light data over specified time. In light data use CHSV struct values.
 void fade(long time, lightData targetLight);
 
@@ -226,7 +187,13 @@ void setPreset4Action() {Preset4 = CurrentLight;}
 void setPreset5Action() {Preset5 = CurrentLight;}
 void loadEEPROMAction() {loadEEPROM();}
 void saveEEPROMAction() {saveEEPROM();}
-void wipeEEPROMAction() {EEPROM.put(0, byte(0)); reboot();}
+void wipeEEPROMAction() {
+  EEPROM.put(0, byte(0));
+  #if defined(ESP8266)
+  EEPROM.commit(); // Commit changes to EEPROM
+  #endif
+  reboot();
+}
 
 #ifndef WOKWI
 const IRAction IRActions[] = {
@@ -321,36 +288,36 @@ const IRAction IRActions[] = {
 };
 #endif
 
+#pragma endregion
+// ---
 
 void setup() {
-  #ifdef DEBUG_ATMEGA328P
+  #if defined(DEBUG) && defined(__AVR_ATmega328P__)
   debug_init(); // Needs to be called as first thing in setup
   #endif
 
-  #ifndef DEBUG_ATMEGA328P
+  #if not (defined(DEBUG) && defined(__AVR_ATmega328P__))
   Serial.begin(BAUDRATE);
   delay(100);
   #endif
-  
-  #ifdef DEBUG_ESP8266
+
+  #if defined(DEBUG) && defined(ESP8266)
   gdbstub_init();
   #endif
 
-  #ifndef DEBUG_ATMEGA328P
-  Serial.println(F("START " __FILE__ " from " __DATE__));
-  Serial.println(F("Setting up..."));
-  #endif
+  debugPrintln(F("START " __FILE__ " from " __DATE__));
+  debugPrintln(F("Setting up..."));
 
-  Serial.println("Setting up LEDs...");
+  debugPrintln(F("Setting up FastLED..."));
   FastLED.addLeds<SK6812, PIN_LED, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(150);
   FastLED.show();
-
+  
   status(250);
   statusUpdate(0);
 
-  #if defined(ESP8266)
-  EEPROM.begin(128); // Initialize EEPROM for ESP8266 (used 73 bytes?)
+  #if USE_EEPROM == 1 && defined(ESP8266)
+  EEPROM.begin(EEPROM_SIZE);
   #endif
 
   if (EEPROM.read(0) == EEPROM_PROJECT_ID) {
@@ -360,13 +327,11 @@ void setup() {
     fade(100, CurrentLight);
   }
 
+  debugPrintln(F("Setting up IR receiver..."));
   IrReceiver.begin(PIN_IR, ENABLE_LED_FEEDBACK);
   IrReceiver.registerReceiveCompleteCallback(recieveCallbackHandler);
 
-  #ifndef DEBUG_ATMEGA328P
-  Serial.println(F("Setup done."));
-  #endif
-
+  debugPrintln(F("Setup complete."));
   status(90, 500);
 }
 
@@ -376,11 +341,13 @@ void loop() {
 
   if (millis() > 4294960000UL) { //4294967295
     reboot();
-  } 
+  }
 
   delay(10);
 }
 
+// --- Functions ---
+#pragma region Functions
 void fade(long time, lightData targetLight) {
   if (time < MINIMUM_FADE_TIME_ms) {time = MINIMUM_FADE_TIME_ms;} // Minimum fade time
 
@@ -667,6 +634,10 @@ void saveEEPROM() {
   EEPROM.put(3 + sizeof(lightData)*4, Preset3);
   EEPROM.put(3 + sizeof(lightData)*5, Preset4);
   EEPROM.put(3 + sizeof(lightData)*6, Preset5);
+
+  #if defined(ESP8266)
+  EEPROM.commit(); // Commit changes to EEPROM
+  #endif
 }
 
 void loadEEPROM() {
@@ -683,3 +654,5 @@ void loadEEPROM() {
 
   fade(100, CurrentLight);
 }
+#pragma endregion
+// ---
