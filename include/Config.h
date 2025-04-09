@@ -2,6 +2,7 @@
 #define CONFIG_H
 
 #include <Arduino.h>
+#include <FastLED.h>
 
 
 // --- Pin Config ---
@@ -14,14 +15,39 @@
 #endif
 
 // --- CONFIG ---
-#if defined(BOOT_DEBUG) && defined(CHIP_ESP8266)
+#if defined(BOOT_DEBUG) && defined(ESP8266)
 #define BAUDRATE          74880  // Baudrate for Hardware Serial (to see bootloader info & exceptions for esp8266 boards)
 #else
 #define BAUDRATE         115200  // Baudrate for Hardware Serial
 #endif
+
 #define USE_EEPROM            1  // Use EEPROM for settings (1/0 = yes/no)
+#ifdef USE_EEPROM
+#ifdef ESP8266
 #define EEPROM_SIZE         128  // Size of EEPROM (in bytes) (only for needed ESP8266, ignored for board with real EEPROM)
+#endif
 #define EEPROM_PROJECT_ID  0x01
+#endif
+
+#define USE_WiFi             1  // Use WiFi in station mode (1/0 = yes/no) (only for ESP8266)
+#define USE_mDNS             1  // Use mDNS (1/0 = yes/no) (only for ESP8266)
+#if USE_WiFi == 1
+#ifdef ESP8266
+#define MY_SSID        "O2-Internet-826" // SSID of the wifi network
+#define MY_PASS        "bA6RfeFT"        // Password of the wifi network
+#define STATIC_IP   IPAddress(10,0,0,58)
+#ifdef STATIC_IP
+#define GATEWAY     IPAddress(192,168,1,1)
+#define SUBNET      IPAddress(255,255,255,0)
+#endif
+#if USE_mDNS == 1
+#define mDNS_HOSTNAME    "FloatingIsland"
+#define SERVICE_NAME     "FloatingIsland"
+#endif
+#else
+#error "WiFi not supported on this board!\n Please use ESP8266"
+#endif
+#endif
 
 #define NUM_LEDS                  14  // Number of LEDs in the strip
 #define IR_CODE_FORGET_TIME_ms 1000L
@@ -57,54 +83,73 @@
 #pragma endregion
 // ---
 
-// --- Custom debug print functions ---
-#pragma region DebugPrintDefines
-#if defined(DEBUG) && defined(__AVR_ATmega328P__)
-#define debugPrint(message) debug_message((const char*)message)
-#define debugPrintln(message) debug_message((const char*)message)
-#else
-#define debugPrint(message) Serial.print(message)
-#define debugPrintln(message) Serial.println(message)
-#endif
+// --- Class, Enum and Struct definitions ---
+#pragma region ClassEnumStructs
+enum ledNum{
+  MAIN1,
+  MAIN2,
+  MAIN3,
+  MAIN4,
+  BG1,
+  BG2,
+  BG3,
+  BG4,
+  BG5,
+  BG6,
+  BG7,
+  BG8,
+  BG9,
+  STATUS1
+};
+ 
+enum mainLayout{
+  DIAGONAL,
+  SIDE_BY_SIDE,
+  FRONT_TO_BACK
+};
+ 
+enum fadeDataItem{
+  BRIGHTNESS,
+  MAIN1_H,
+  MAIN1_S,
+  MAIN1_V,
+  MAIN2_H,
+  MAIN2_S,
+  MAIN2_V,
+  BACK_H,
+  BACK_S,
+  BACK_V
+};
+ 
+enum HSVItem{
+  HUE,
+  SAT,
+  VAL
+};
+  
+struct lightData {
+  byte Brightness;
+  CHSV Main1;
+  CHSV Main2;
+  CHSV Back;
+};
+ 
+struct fadeData {
+  byte start;
+  byte end;
+  byte diff;
+  int dir;
+};
 
-void debugPrintlnf(int len, const char* format, ...) {
-  #ifdef ESP32
-  Serial.printf(format, ...);
-  #else
-  char buffer[len];
+struct IRAction {
+  byte mode; // Mode number (0-2)
+  byte IrCommand; // IR command (0-23)
+  void (*action)(); // Action function callback
+  bool repeatable = true; // If the action can be repeated
+  IRAction(byte m, byte cmd, void (*act)(), bool rep = true)
+    : mode(m), IrCommand(cmd), action(act), repeatable(rep) {}
+};
 
-  va_list args;
-  va_start(args, format);
-  vsnprintf(buffer, len, format, args);
-  va_end(args);
-
-  #if defined(DEBUG) && defined(__AVR_ATmega328P__)
-  debug_message(buffer);
-  #else
-  Serial.println(buffer);
-  #endif
-  #endif
-}
-
-void debugPrintlnf(int len, const __FlashStringHelper* format, ...) {
-  #ifdef ESP32
-  Serial.printf(format, ...);
-  #else
-  char buffer[len];
-
-  va_list args;
-  va_start(args, format);
-  vsnprintf(buffer, len, (const char*)format, args);
-  va_end(args);
-
-  #if defined(DEBUG) && defined(__AVR_ATmega328P__)
-  debug_message(buffer);
-  #else
-  Serial.println(buffer);
-  #endif
-  #endif
-}
 #pragma endregion
-// ---
 
 #endif // CONFIG_H

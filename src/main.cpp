@@ -8,81 +8,19 @@
  *    - noise.h?, color.h?, colorpalettes.h?
  * - ESP01 Serial.print only prints first 36 chars, then nothing
  * - Blink when starting up and turned off from EEPROM
+ * - Mode timeout - switch to mode 0
 */
 
 #include <Arduino.h>
 #include <Config.h>
+#include <debugPrints.h>
+#if USE_WiFi == 1
+#include <WifiHandler.h>
+#endif
 #include <FastLED.h>
 #include <IRremote.hpp>
 
 // --- Define variables, classes and functions ---
-#pragma region ClassEnumStructs
-enum ledNum{
-  MAIN1,
-  MAIN2,
-  MAIN3,
-  MAIN4,
-  BG1,
-  BG2,
-  BG3,
-  BG4,
-  BG5,
-  BG6,
-  BG7,
-  BG8,
-  BG9,
-  STATUS1
-};
- 
-enum mainLayout{
-  DIAGONAL,
-  SIDE_BY_SIDE,
-  FRONT_TO_BACK
-};
- 
-enum fadeDataItem{
-  BRIGHTNESS,
-  MAIN1_H,
-  MAIN1_S,
-  MAIN1_V,
-  MAIN2_H,
-  MAIN2_S,
-  MAIN2_V,
-  BACK_H,
-  BACK_S,
-  BACK_V
-};
- 
-enum HSVItem{
-  HUE,
-  SAT,
-  VAL
-};
-  
-struct lightData {
-  byte Brightness;
-  CHSV Main1;
-  CHSV Main2;
-  CHSV Back;
-};
- 
-struct fadeData {
-  byte start;
-  byte end;
-  byte diff;
-  int dir;
-};
-
-struct IRAction {
-  byte mode; // Mode number (0-2)
-  byte IrCommand; // IR command (0-23)
-  void (*action)(); // Action function callback
-  bool repeatable = true; // If the action can be repeated
-  IRAction(byte m, byte cmd, void (*act)(), bool rep = true)
-    : mode(m), IrCommand(cmd), action(act), repeatable(rep) {}
-};
-
-#pragma endregion
 
 #pragma region VariablesClassInstances
 CRGB leds[NUM_LEDS];
@@ -291,6 +229,7 @@ const IRAction IRActions[] = {
 #pragma endregion
 // ---
 
+#pragma region Setup
 void setup() {
   #if defined(DEBUG) && defined(__AVR_ATmega328P__)
   debug_init(); // Needs to be called as first thing in setup
@@ -331,13 +270,23 @@ void setup() {
   IrReceiver.begin(PIN_IR, DISABLE_LED_FEEDBACK);
   IrReceiver.registerReceiveCompleteCallback(recieveCallbackHandler);
 
+  #if USE_WiFi == 1
+  wifi_init();
+  #endif
+
   debugPrintln(F("Setup complete."));
   status(90, 500);
 }
+#pragma endregion
 
+#pragma region Loop
 void loop() {
   fadeUpdate();
   statusUpdate();
+
+  #if USE_WiFi == 1
+  serverUpdate(); // Update the web server
+  #endif
 
   if (millis() > 4294960000UL) { //4294967295
     reboot();
@@ -345,6 +294,7 @@ void loop() {
 
   delay(10);
 }
+#pragma endregion
 
 // --- Functions ---
 #pragma region Functions
