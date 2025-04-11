@@ -6,8 +6,6 @@
  * - TinyReciever.h?, IRCommandDispatcher.h?, other cleaner uproach?
  * - Functions from FastLED
  *    - noise.h?, color.h?, colorpalettes.h?
- * - ESP01 Serial.print only prints first 36 chars, then nothing
- * - Blink when starting up and turned off from EEPROM
  * - Mode timeout - switch to mode 0
 */
 
@@ -250,6 +248,7 @@ void setup() {
   debugPrintln(F("Setting up FastLED..."));
   FastLED.addLeds<SK6812, PIN_LED, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(150);
+  fill_solid(leds, NUM_LEDS, CRGB::Black); // Clear all LEDs
   FastLED.show();
   
   status(250);
