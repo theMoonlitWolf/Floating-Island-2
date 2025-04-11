@@ -50,9 +50,10 @@
 #endif
 
 #define NUM_LEDS                  14  // Number of LEDs in the strip
-#define IR_CODE_FORGET_TIME_ms 1000L
-#define IR_REPEAT_IGNORE_TIME_ms 100
-#define MINIMUM_FADE_TIME_ms      50
+#define IR_CODE_FORGET_TIME_ms 1000L  // Time to forget the last IR code for repeat (in ms)
+#define IR_REPEAT_IGNORE_TIME_ms 100  // Time whithin which to ignore repeated IR codes (in ms)
+#define IR_MODE_FORGET_TIME_ms 10000L  // Time to forget the last mode after any IR interaction and set to mode 0 (in ms)
+#define MINIMUM_FADE_TIME_ms      50  
 #define DEFAULT_FADE_TIME_ms     150
 #define STATUS_FADE_TIME_ms      150 
 #define IR_REMOTE_STEP            10

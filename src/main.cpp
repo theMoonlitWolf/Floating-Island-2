@@ -532,6 +532,10 @@ void recieveCallbackHandler() {
     }
   }
 
+  if (LastIRCodeTime + IR_MODE_FORGET_TIME_ms < millis()) {
+    mode = 0; // Reset mode if no command received for a while
+  }
+
   LastIRCodeTime = millis();
 
   // Search for the action in the IRActions list
