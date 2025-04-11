@@ -53,6 +53,7 @@
 #define IR_CODE_FORGET_TIME_ms 1000L
 #define IR_REPEAT_IGNORE_TIME_ms 100
 #define MINIMUM_FADE_TIME_ms      50
+#define DEFAULT_FADE_TIME_ms     150
 #define STATUS_FADE_TIME_ms      150 
 #define IR_REMOTE_STEP            10
 

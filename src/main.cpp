@@ -270,6 +270,7 @@ void setup() {
   IrReceiver.registerReceiveCompleteCallback(recieveCallbackHandler);
 
   #if USE_WiFi == 1
+  debugPrintln(F("Setting up WiFi..."));
   wifi_init();
   #endif
 
@@ -304,6 +305,8 @@ void fade(long time, lightData targetLight) {
 
   if (targetLight.Brightness == FastLED.getBrightness() && targetLight.Main1 == CurrentLight.Main1 && targetLight.Main2 == CurrentLight.Main2 && targetLight.Back == CurrentLight.Back)
   {return;} // No change required
+
+  debugPrintln(F("Fading..."));
 
   FadeStartTime = millis();
   FadeTime = time;
@@ -358,7 +361,7 @@ void fade(long time, lightData targetLight) {
 }
 
 void fade(lightData targetLight) {
-  fade(50, targetLight);
+  fade(DEFAULT_FADE_TIME_ms, targetLight);
 }
 
 void status(int hue, uint16_t duration, int val, int sat) {
@@ -507,18 +510,14 @@ void recieveCallbackHandler() {
   IrReceiver.decode(); // fill IrReceiver.decodedIRData
   IrReceiver.resume(); // enable receiving the next value
 
-  #ifdef DEBUG_ATMEGA328P
-  debug_message("IR received");
-  debug_message("Address: ");
-  debug_message((char*)IrReceiver.decodedIRData.address);
-  debug_message("Command: ");
-  debug_message((char*)IrReceiver.decodedIRData.command);
-  #endif
+  debugPrintln("IR received");
+  debugPrint("Address: ");
+  debugPrintln((char*)IrReceiver.decodedIRData.address);
+  debugPrint("Command: ");
+  debugPrintln((char*)IrReceiver.decodedIRData.command);
 
   if (IrReceiver.decodedIRData.address != 0xEF00) {
-    #ifdef DEBUG_ATMEGA328P
-    debug_message("Invalid IR address");
-    #endif
+    debugPrintln("Invalid IR address");
   
     #ifndef WOKWI
     return;
@@ -526,8 +525,8 @@ void recieveCallbackHandler() {
   }
   if (IrReceiver.decodedIRData.flags == IRDATA_FLAGS_IS_REPEAT) {
     if (LastIRCodeTime + IR_REPEAT_IGNORE_TIME_ms > millis() || LastIRCodeTime +IR_CODE_FORGET_TIME_ms < millis()) {
-      #ifdef DEBUG_ATMEGA328P
-      debug_message("Ignoring repeat");
+      #ifdef DEBUG
+      debugPrintln("Ignoring repeat");
       #endif
       return;
     }
@@ -572,7 +571,7 @@ void recieveCallbackHandler() {
 }
 
 void saveEEPROM() {
-  Serial.println(F("Saving to EEPROM..."));
+  debugPrintln(F("Saving to EEPROM..."));
   EEPROM.put(0, byte(EEPROM_PROJECT_ID));
   EEPROM.put(1, On);
   EEPROM.put(2, Layout);
@@ -590,7 +589,7 @@ void saveEEPROM() {
 }
 
 void loadEEPROM() {
-  Serial.println(F("Loading from EEPROM..."));
+  debugPrintln(F("Loading from EEPROM..."));
   EEPROM.get(1, On);
   EEPROM.get(2, Layout);
   EEPROM.get(3, CurrentLight); // Startup color
