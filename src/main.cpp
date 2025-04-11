@@ -511,11 +511,8 @@ void recieveCallbackHandler() {
   IrReceiver.resume(); // enable receiving the next value
 
   debugPrintln("IR received");
-  debugPrint("Address: ");
-  debugPrintln((char*)IrReceiver.decodedIRData.address);
-  debugPrint("Command: ");
-  debugPrintln((char*)IrReceiver.decodedIRData.command);
-
+  debugPrintlnf(20, "Address: %04X", IrReceiver.decodedIRData.address);
+  debugPrintlnf(20, "Command: %02X", IrReceiver.decodedIRData.command);
   if (IrReceiver.decodedIRData.address != 0xEF00) {
     debugPrintln("Invalid IR address");
   
