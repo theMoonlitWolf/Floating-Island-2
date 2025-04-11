@@ -30,6 +30,8 @@ mainLayout Layout = DIAGONAL;
 
 unsigned long LastIRCodeTime = 0;
 
+byte Brightness = 0;
+
 unsigned long FadeStartTime = 0;
 long FadeTime = 0;
 bool Fading = false;
@@ -247,7 +249,6 @@ void setup() {
 
   debugPrintln(F("Setting up FastLED..."));
   FastLED.addLeds<SK6812, PIN_LED, GRB>(leds, NUM_LEDS);
-  FastLED.setBrightness(150);
   fill_solid(leds, NUM_LEDS, CRGB::Black); // Clear all LEDs
   FastLED.show();
   
@@ -301,9 +302,18 @@ void loop() {
 void fade(long time, lightData targetLight) {
   if (time < MINIMUM_FADE_TIME_ms) {time = MINIMUM_FADE_TIME_ms;} // Minimum fade time
 
+  debugPrintln(On ? "On" : "Off");
+  debugPrintlnf(30, "Current light: %d %d %d", CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v);
+  debugPrintlnf(30, "Target light: %d %d %d", targetLight.Main1.h, targetLight.Main1.s, targetLight.Main1.v);
+  debugPrintlnf(30, "Current brightness: %d", CurrentLight.Brightness);
+  debugPrintlnf(30, "Target brightness: %d", targetLight.Brightness);
+  debugPrintlnf(20, "Brightness: %d", Brightness);
+
+  CurrentLight.Brightness = targetLight.Brightness;
+
   if (!On) {targetLight.Brightness = 0;} // If light is off, set brightness to 0
 
-  if (targetLight.Brightness == FastLED.getBrightness() && targetLight.Main1 == CurrentLight.Main1 && targetLight.Main2 == CurrentLight.Main2 && targetLight.Back == CurrentLight.Back)
+  if (targetLight.Brightness == Brightness && targetLight.Main1 == CurrentLight.Main1 && targetLight.Main2 == CurrentLight.Main2 && targetLight.Back == CurrentLight.Back)
   {return;} // No change required
 
   debugPrintln(F("Fading..."));
@@ -312,7 +322,7 @@ void fade(long time, lightData targetLight) {
   FadeTime = time;
 
   // Fill fade data list
-  FadeData[BRIGHTNESS].start = FastLED.getBrightness(); // If off (!On), CurrentLight.Brightness stores original brightness, actual brightness might be different
+  FadeData[BRIGHTNESS].start = Brightness; // If off (!On), CurrentLight.Brightness stores original brightness, actual brightness might be different
   FadeData[BRIGHTNESS].end = targetLight.Brightness;
    
   FadeData[MAIN1_H].start = CurrentLight.Main1.h;
@@ -421,11 +431,12 @@ byte fadeUpdate() {
   {progress = 100;}
 
   // Calculate current brightness
-  FastLED.setBrightness(FadeData[BRIGHTNESS].start + (FadeData[BRIGHTNESS].diff * progress / 100) * FadeData[BRIGHTNESS].dir);
+  Brightness = FadeData[BRIGHTNESS].start + (FadeData[BRIGHTNESS].diff * progress / 100) * FadeData[BRIGHTNESS].dir;
+  float brightnessFactor = float(Brightness) / 255.0; // Calculate brightness factor for HSV values
   
-  if (On) { // Do not update CurrentLight.Brightness if light is off, it will be used to store original brightness for turning it back on
-    CurrentLight.Brightness = FadeData[BRIGHTNESS].start + (FadeData[BRIGHTNESS].diff * progress / 100) * FadeData[BRIGHTNESS].dir;
-  }
+  // if (On) { // Do not update CurrentLight.Brightness if light is off, it will be used to store original brightness for turning it back on
+  //   CurrentLight.Brightness = Brightness;
+  // }
   
   // Calculate current light values
   CurrentLight.Main1.h = FadeData[MAIN1_H].start + (FadeData[MAIN1_H].diff * progress / 100) * FadeData[MAIN1_H].dir;
@@ -438,34 +449,38 @@ byte fadeUpdate() {
   CurrentLight.Back.s = FadeData[BACK_S].start + (FadeData[BACK_S].diff * progress / 100) * FadeData[BACK_S].dir;
   CurrentLight.Back.v = FadeData[BACK_V].start + (FadeData[BACK_V].diff * progress / 100) * FadeData[BACK_V].dir;
 
+  debugPrintlnf(128, "Brightness: %3d; brightness factor: %3f Current light: %3d %3d %3d",
+    Brightness, brightnessFactor,
+    CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v); 
+
   // Set current light values to LEDs
   switch (Layout) {
     case DIAGONAL:
-      leds[MAIN1] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v);
-      leds[MAIN2] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v);
-      leds[MAIN3] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v);
-      leds[MAIN4] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v);
+      leds[MAIN1] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v * brightnessFactor);
+      leds[MAIN2] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v * brightnessFactor);
+      leds[MAIN3] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v * brightnessFactor);
+      leds[MAIN4] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v * brightnessFactor);
       break;
     case SIDE_BY_SIDE:
-      leds[MAIN1] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v);
-      leds[MAIN2] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v);
-      leds[MAIN3] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v);
-      leds[MAIN4] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v);
+      leds[MAIN1] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v * brightnessFactor);
+      leds[MAIN2] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v * brightnessFactor);
+      leds[MAIN3] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v * brightnessFactor);
+      leds[MAIN4] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v * brightnessFactor);
       break;
     case FRONT_TO_BACK:
-      leds[MAIN1] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v);
-      leds[MAIN2] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v);
-      leds[MAIN3] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v);
-      leds[MAIN4] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v);
+      leds[MAIN1] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v * brightnessFactor);
+      leds[MAIN2] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v * brightnessFactor);
+      leds[MAIN3] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v * brightnessFactor);
+      leds[MAIN4] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v * brightnessFactor);
       break;
     default:
-    leds[MAIN1] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v);
-      leds[MAIN2] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v);
-      leds[MAIN3] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v);
-      leds[MAIN4] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v);
+      leds[MAIN1] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v * brightnessFactor);
+      leds[MAIN2] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v * brightnessFactor);
+      leds[MAIN3] = CHSV(CurrentLight.Main2.h, CurrentLight.Main2.s, CurrentLight.Main2.v * brightnessFactor);
+      leds[MAIN4] = CHSV(CurrentLight.Main1.h, CurrentLight.Main1.s, CurrentLight.Main1.v * brightnessFactor);
       break;
   }
-  fill_solid(&leds[BG1], 9, CHSV(CurrentLight.Back.h, CurrentLight.Back.s, CurrentLight.Back.v));
+  fill_solid(&leds[BG1], 9, CHSV(CurrentLight.Back.h, CurrentLight.Back.s, CurrentLight.Back.v * brightnessFactor));
 
   FastLED.show(); // Update LEDs
 
@@ -494,27 +509,41 @@ void statusUpdate(bool skipFade) {
     {progress = 100;}
   }
 
+  // Calculate current brightness
+  byte statusBrightness = max(50, min(int(CurrentLight.Brightness * 1.5), 255)); // Set brightness to 1.5x of current brightness, but between 50 and 255
+  float statusBrightnessFactor = float(statusBrightness) / 255.0; // Calculate brightness factor for HSV values
+
+  // debugPrintlnf(128, "Brightness: %3d; STATUS: brightness: %3d; brightness factor: %3f; value: %3d; real value: %3d",
+  //   CurrentLight.Brightness, statusBrightness, statusBrightnessFactor,
+  //   StatusFadeData[VAL].start + (StatusFadeData[VAL].diff * progress / 100) * StatusFadeData[VAL].dir,
+  //   byte(float(StatusFadeData[VAL].start + (StatusFadeData[VAL].diff * progress / 100) * StatusFadeData[VAL].dir) * statusBrightnessFactor));
+
   // Calculate current light values and set them to the LED
   leds[STATUS1] = CHSV(StatusFadeData[HUE].start + (StatusFadeData[HUE].diff * progress / 100) * StatusFadeData[HUE].dir,
                        StatusFadeData[SAT].start + (StatusFadeData[SAT].diff * progress / 100) * StatusFadeData[SAT].dir,
-                       StatusFadeData[VAL].start + (StatusFadeData[VAL].diff * progress / 100) * StatusFadeData[VAL].dir);
+                       byte(float(StatusFadeData[VAL].start + (StatusFadeData[VAL].diff * progress / 100) * StatusFadeData[VAL].dir) * statusBrightnessFactor));
   
     if (progress == 100) {
     StatusFading = false; // Fading done
   }
 
-  FastLED.show(); // Update LEDs
+  FastLED.show(); // Update LED
   }
 
 void recieveCallbackHandler() {
   IrReceiver.decode(); // fill IrReceiver.decodedIRData
   IrReceiver.resume(); // enable receiving the next value
 
+  #ifdef DEBUG
   debugPrintln("IR received");
   debugPrintlnf(20, "Address: %04X", IrReceiver.decodedIRData.address);
   debugPrintlnf(20, "Command: %02X", IrReceiver.decodedIRData.command);
+  #endif
+
   if (IrReceiver.decodedIRData.address != 0xEF00) {
+    #ifdef DEBUG
     debugPrintln("Invalid IR address");
+    #endif
   
     #ifndef WOKWI
     return;
@@ -528,6 +557,8 @@ void recieveCallbackHandler() {
       return;
     }
   }
+
+  debugPrintlnf(30, "IR recieved, command: 0x%02X", IrReceiver.decodedIRData.command);
 
   if (LastIRCodeTime + IR_MODE_FORGET_TIME_ms < millis()) {
     mode = 0; // Reset mode if no command received for a while
